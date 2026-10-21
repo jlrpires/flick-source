@@ -1,0 +1,83 @@
+name: Update Flickv4 Source
+
+on:
+  schedule:
+    - cron: '0 */12 * * *' # Runs every 12 hours
+  workflow_dispatch: # Lets you run it manually
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Fetch latest Flickv4 release
+        run: |
+          python3 - << 'PYEOF'
+          import json, urllib.request, os
+          
+          url = 'https://api.github.com/repos/sheeshcake/Flickv4/releases/latest'
+          req = urllib.request.Request(url, headers={'User-Agent': 'GitHub-Action'})
+          
+          try:
+              with urllib.request.urlopen(req) as response:
+                  release = json.loads(response.read().decode())
+          except Exception as e:
+              print(f"Error fetching release: {e}")
+              exit(1)
+              
+          version = release['tag_name']
+          date = release['published_at'][:10]
+          
+          ipa_url = ""
+          ipa_size = 0
+          for asset in release['assets']:
+              if asset['name'].endswith('.ipa'):
+                  ipa_url = asset['browser_download_url']
+                  ipa_size = asset['size']
+                  break
+                  
+          if not ipa_url:
+              print("No IPA found in the latest release.")
+              exit(1)
+              
+          source = {
+              "name": "Flickv4 Source",
+              "identifier": "com.wfrdee.flick.source",
+              "apps": [
+                  {
+                      "name": "Flick",
+                      "bundleIdentifier": "com.wfrdee.flick",
+                      "developerName": "sheeshcake",
+                      "subtitle": "Free streaming",
+                      "localizedDescription": "Free ad-free streaming app.",
+                      "iconURL": "https://raw.githubusercontent.com/sheeshcake/Flickv4/main/assets/applogo/ic_launcher.png",
+                      "tintColor": "#E50914",
+                      "category": "entertainment",
+                      "versions": [
+                          {
+                              "version": version,
+                              "date": date,
+                              "downloadURL": ipa_url,
+                              "size": ipa_size
+                          }
+                      ]
+                  }
+              ]
+          }
+          
+          with open('flick.json', 'w') as f:
+              json.dump(source, f, indent=2)
+          print(f"Successfully updated to version {version}")
+          PYEOF
+
+      - name: Commit and push changes
+        run: |
+          git config --global user.name "GitHub Action"
+          git config --global user.email "action@github.com"
+          git add flick.json
+          git commit -m "Auto-update to latest Flickv4 release" || exit 0
+          git push
